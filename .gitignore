@@ -1,0 +1,26 @@
+# Python
+backend/.venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Datos locales (SQLite)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Entorno / sistema
+.env
+*.log
+.DS_Store
+
+# Herramientas / IDE
+.codegraph/
+.idea/
+.vscode/
+
+# Claude Code y documentos de contexto (no versionar)
+.claude/
+CONTEXTO.md
+CLAUDE.md

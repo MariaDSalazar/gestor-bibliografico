@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gestor Bibliográfico</title>
+  <link rel="stylesheet" href="/vendor/primevue/primeicons.css" />
+  <link rel="stylesheet" href="/app.css" />
+  <script src="/vendor/vue.global.prod.js"></script>
+  <!-- primevue PRIMERO (define window.PrimeVue); el tema lo EXTIENDE después. -->
+  <script src="/vendor/primevue/primevue.min.js"></script>
+  <script src="/vendor/primevue/aura.js"></script>
+  <!-- PDF.js: visor de PDF en canvas (robusto, funciona en cualquier navegador). -->
+  <script src="/vendor/pdfjs/pdf.min.js"></script>
+</head>
+<body>
+  <div id="app" v-cloak>
+    <!-- ░░░ PANTALLA DE LOGIN / REGISTRO ░░░ -->
+    <div v-if="!currentUser" class="login-pantalla">
+      <div class="login-caja">
+        <div class="login-marca"><i class="pi pi-book txt-azul" style="font-size:26px"></i> Gestor Bibliográfico</div>
+        <p class="login-sub">{{ authMode === 'register' ? 'Crea tu cuenta' : 'Entra a tu biblioteca' }}</p>
+        <div class="campo">
+          <label>Usuario</label>
+          <p-input-text v-model="authForm.username" class="ancho-total" @keydown.enter="entrar" autofocus></p-input-text>
+        </div>
+        <div class="campo">
+          <label>Contraseña</label>
+          <input type="password" v-model="authForm.password" class="ta" @keydown.enter="entrar" />
+        </div>
+        <p-message v-if="authError" severity="error" :closable="false" class="bloque">{{ authError }}</p-message>
+        <p-button :label="authMode === 'register' ? 'Crear cuenta' : 'Entrar'" :loading="authBusy"
+          class="ancho-total mt-8" @click="entrar"></p-button>
+        <p class="login-cambiar">
+          <span v-if="authMode === 'login'">¿No tienes cuenta?
+            <a href="#" @click.prevent="authMode = 'register'; authError = ''">Regístrate</a></span>
+          <span v-else>¿Ya tienes cuenta?
+            <a href="#" @click.prevent="authMode = 'login'; authError = ''">Inicia sesión</a></span>
+        </p>
+      </div>
+    </div>
+
+    <!-- ░░░ APLICACIÓN (solo con sesión iniciada) ░░░ -->
+    <template v-if="currentUser">
+    <!-- Cabecera -->
+    <header class="cabecera">
+      <i class="pi pi-book txt-azul" style="font-size:20px"></i>
+      <h1>Gestor Bibliográfico</h1>
+      <span class="crece"></span>
+      <span class="usuario-chip"><i class="pi pi-user"></i> {{ currentUser.username }}</span>
+      <p-button label="Salir" icon="pi pi-sign-out" text size="small" @click="cerrarSesion"></p-button>
+    </header>
+
+    <main class="paneles">
+      <!-- ░░░ PANEL IZQUIERDO: importar + carpetas ░░░ -->
+      <aside class="panel-izq">
+        <section class="tarjeta">
+          <div class="tarjeta-cab">Importar</div>
+          <div class="tarjeta-cuerpo">
+            <p class="ayuda">Pega un <b>DOI</b> o <b>enlace</b>, o suelta un <b>PDF</b>. Los datos se extraen solos.</p>
+            <p-input-text v-model="linkInput" placeholder="DOI, enlace o arXiv…"
+              class="ancho-total" @keydown.enter="importLink"></p-input-text>
+            <p-button icon="pi pi-search" label="Buscar metadatos" :loading="busy"
+              class="ancho-total mt-8" @click="importLink"></p-button>
+            <div class="divisor"><span>o</span></div>
+            <div class="soltar" @click="$refs.pdfInput.click()" @dragover.prevent @drop.prevent="onDrop">
+              <i class="pi pi-file-pdf"></i>
+              <div>Arrastra un PDF aquí<br /><span class="silencio">o haz clic para seleccionar</span></div>
+              <input ref="pdfInput" type="file" accept="application/pdf" class="oculto" @change="onPdfPicked" />
+            </div>
+            <p-message v-if="importMsg" :severity="importMsg.kind" class="bloque" :closable="false">
+              {{ importMsg.text }}
+            </p-message>
+          </div>
+        </section>
+
+        <section class="tarjeta">
+          <div class="tarjeta-cab">
+            <span>Carpetas</span>
+            <p-button icon="pi pi-folder-plus" label="Nueva" text size="small" @click="showNewFolder = !showNewFolder"></p-button>
+          </div>
+          <div class="tarjeta-cuerpo">
+            <div v-if="showNewFolder" class="fila">
+              <p-input-text v-model="newFolderName" placeholder="Nombre de la carpeta" class="crece"
+                @keydown.enter="createFolder" @keydown.esc="showNewFolder = false"></p-input-text>
+              <p-button icon="pi pi-check" @click="createFolder"></p-button>
+            </div>
+
+            <ul class="lista">
+              <li class="carpeta" :class="{ activa: activeFilter.kind === 'all' }" @click="setFilter({ kind: 'all' })">
+                <i class="pi pi-inbox"></i>
+                <span class="crece">Todos los documentos</span>
+              </li>
+              <li class="carpeta" :class="{ activa: activeFilter.kind === 'none' }" @click="setFilter({ kind: 'none' })">
+                <i class="pi pi-folder"></i>
+                <span class="crece">Sin carpeta</span>
+              </li>
+              <li class="separador" v-if="folders.length">Mis carpetas</li>
+              <li v-for="c in folders" :key="c.id" class="carpeta"
+                :class="{ activa: activeFilter.kind === 'collection' && activeFilter.id === c.id }"
+                @click="setFilter({ kind: 'collection', id: c.id, name: c.name })">
+                <i class="pi pi-folder-open"></i>
+                <span class="crece">{{ c.name }}</span>
+                <span class="badge">{{ c.doc_count }}</span>
+                <button class="borrar-carpeta" title="Eliminar carpeta" @click.stop="deleteFolder(c.id, c.name)">
+                  <i class="pi pi-trash"></i>
+                </button>
+              </li>
+              <li v-if="!folders.length" class="vacio-carpetas">Aún no hay carpetas. Crea una con “Nueva”.</li>
+            </ul>
+          </div>
+        </section>
+      </aside>
+
+      <!-- ░░░ PANEL CENTRAL: biblioteca (DataTable) ░░░ -->
+      <section class="panel-centro tarjeta">
+        <div class="tarjeta-cab">
+          <span><i class="pi pi-folder-open txt-azul" style="margin-right:6px"></i>{{ libraryTitle }}</span>
+          <div class="cab-acciones">
+            <span v-if="docsSeleccionados.length" class="sel-info">{{ docsSeleccionados.length }} seleccionado(s)</span>
+            <p-button label="Descargar referencias" icon="pi pi-download" size="small" outlined
+              :disabled="!documents.length" @click="abrirExport"></p-button>
+            <span class="badge-grande">{{ documents.length }}</span>
+          </div>
+        </div>
+        <div class="tarjeta-cuerpo sin-padding">
+          <p-data-table :value="documents" v-model:selection="docsSeleccionados"
+            data-key="id" @row-click="onRowClick" paginator :rows="15" :rows-per-page-options="[15, 30, 50]"
+            removable-sort striped-rows scrollable scroll-height="flex" table-style="min-width:100%">
+            <template #empty>
+              <div class="vacio">No hay documentos aquí. Importa uno o cambia de carpeta.</div>
+            </template>
+            <p-column selection-mode="multiple" header-style="width:3rem"></p-column>
+            <p-column field="title" header="Título" sortable>
+              <template #body="{ data }">
+                <div class="celda-titulo">{{ data.title || '(sin título)' }}</div>
+                <div class="celda-sub">{{ docAuthors(data) }}</div>
+              </template>
+            </p-column>
+            <p-column field="year" header="Año" sortable style="width:90px"></p-column>
+            <p-column field="type" header="Tipo" sortable style="width:160px">
+              <template #body="{ data }"><span class="tipo-tag">{{ typeLabel(data.type) }}</span></template>
+            </p-column>
+          </p-data-table>
+        </div>
+      </section>
+
+      <!-- ░░░ PANEL DERECHO: detalle del documento ░░░ -->
+      <aside class="panel-der tarjeta">
+        <div class="tarjeta-cab">Detalle</div>
+        <div class="tarjeta-cuerpo">
+          <div v-if="!selectedDoc" class="vacio-detalle">
+            <i class="pi pi-arrow-left" style="font-size:18px"></i>
+            <p>Selecciona un documento de la lista para ver sus datos y citarlo.</p>
+          </div>
+          <div v-else class="detalle">
+            <h2 class="detalle-titulo">{{ selectedDoc.title || '(sin título)' }}</h2>
+            <dl class="detalle-campos">
+              <dt>Autores</dt><dd>{{ docAuthors(selectedDoc) }}</dd>
+              <dt>Año</dt><dd>{{ selectedDoc.year || 's. f.' }}</dd>
+              <dt>Tipo</dt><dd>{{ typeLabel(selectedDoc.type) }}</dd>
+              <dt v-if="selectedDoc.doi">DOI</dt>
+              <dd v-if="selectedDoc.doi"><a :href="'https://doi.org/' + selectedDoc.doi" target="_blank">{{ selectedDoc.doi }}</a></dd>
+            </dl>
+
+            <div class="detalle-bloque">
+              <label class="mini-label">Mover a carpeta</label>
+              <p-select :options="moveOptions" option-label="label" option-value="value"
+                placeholder="Elegir carpeta…" class="ancho-total"
+                @update:model-value="(cid) => assignDoc(cid, selectedDoc.id)"></p-select>
+              <p-button v-if="activeFilter.kind === 'collection'" label="Quitar de esta carpeta"
+                icon="pi pi-folder" text size="small" class="bloque"
+                @click="unfileDoc(activeFilter.id, selectedDoc.id)"></p-button>
+            </div>
+
+            <div class="detalle-bloque">
+              <label class="mini-label">Referencia (clic = copiar)</label>
+              <div class="botones-citar">
+                <p-button label="APA 7" icon="pi pi-copy" outlined size="small" @click="citar('apa', 'APA 7')"></p-button>
+                <p-button label="IEEE" icon="pi pi-copy" outlined size="small" @click="citar('ieee', 'IEEE')"></p-button>
+                <p-button label="BibTeX" icon="pi pi-copy" outlined size="small" @click="citar('bibtex', 'BibTeX')"></p-button>
+              </div>
+              <div v-if="citaActual" class="cita-caja">
+                <div class="cita-cab">
+                  <span>{{ citaActual.etiqueta }}</span>
+                  <button class="cita-copiar" @click="copiar(citaActual.texto)" title="Copiar">
+                    <i class="pi pi-copy"></i>
+                  </button>
+                </div>
+                <pre class="cita-texto">{{ citaActual.texto }}</pre>
+              </div>
+              <p-button label="Cita en el texto (narrativa, textual…)" icon="pi pi-align-left"
+                size="small" class="bloque mt-8" @click="abrirCitarTexto"></p-button>
+            </div>
+
+            <div class="detalle-acciones-fin">
+              <p-button label="Editar datos" icon="pi pi-pencil" outlined size="small"
+                @click="abrirEditar(selectedDoc)"></p-button>
+              <p-button label="Eliminar" icon="pi pi-trash" severity="danger" outlined size="small"
+                @click="removeDoc(selectedDoc.id)"></p-button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Diálogo de vista previa / edición (con visor de PDF o de la página web) -->
+    <p-dialog v-model:visible="showPreview" modal :header="editingId ? 'Editar documento' : 'Revisar y guardar'"
+      :style="{ width: (pdfUrl || editingId || webUrl) ? '960px' : '520px' }" @hide="cerrarPreview">
+      <div class="preview-wrap" :class="{ 'con-pdf': pdfUrl || editingId || webUrl }">
+        <!-- Columna izquierda: PDF, página web embebida, o zona para adjuntar un PDF -->
+        <div v-if="pdfUrl || editingId || webUrl" class="pdf-col">
+          <div class="pdf-col-cab">
+            <span v-if="pdfUrl"><i class="pi pi-file-pdf"></i> PDF del documento</span>
+            <span v-else-if="webUrl"><i class="pi pi-globe"></i> Página web</span>
+            <span v-else><i class="pi pi-file-pdf"></i> Adjuntar PDF</span>
+            <a v-if="webUrl" :href="webUrl" target="_blank" rel="noopener" class="link-mini">Abrir ↗</a>
+            <button v-else-if="pdfUrl && editingId" type="button" class="link-mini" @click="$refs.adjInput.click()">Cambiar</button>
+          </div>
+          <pdf-visor v-if="pdfUrl" :src="pdfUrl" class="pdf-visor"></pdf-visor>
+          <iframe v-else-if="webUrl" :src="webUrl" class="web-visor" title="Página web"></iframe>
+          <div v-else class="soltar pdf-soltar" @click="$refs.adjInput.click()" @dragover.prevent @drop.prevent="onAdjuntarDrop">
+            <i class="pi pi-file-pdf"></i>
+            <div>Este documento no tiene PDF.<br /><span class="silencio">Arrastra uno o haz clic para adjuntarlo.</span></div>
+          </div>
+          <input ref="adjInput" type="file" accept="application/pdf" class="oculto" @change="onAdjuntarPicked" />
+        </div>
+        <!-- Columna derecha: formulario -->
+        <div class="form-col">
+          <p-message v-if="previewAviso" severity="warn" :closable="false" class="bloque-aviso">{{ previewAviso }}</p-message>
+          <p v-else class="ayuda">Comprueba los datos extraídos. Edita si algo no está bien y guarda.</p>
+          <div class="campo"><label>Tipo</label>
+            <p-select v-model="form.type" :options="typeOptions" option-label="label" option-value="value" class="ancho-total"></p-select></div>
+          <div class="campo"><label>Título</label><p-input-text v-model="form.title" class="ancho-total"></p-input-text></div>
+          <div class="campo"><label>Autores</label>
+            <p-input-text v-model="form.authors" placeholder="Apellido, Nombre; Apellido, Nombre" class="ancho-total"></p-input-text></div>
+          <div class="campo"><label>Año{{ ['webpage','paper-conference'].includes(form.type) ? ' (y fecha en el DOI/URL)' : '' }}</label><p-input-text v-model="form.year" class="ancho-total"></p-input-text></div>
+
+          <!-- Publicación: revista (artículo) / libro (capítulo) / sitio (web) -->
+          <div v-if="mostrarContainer" class="campo"><label>{{ labelContainer }}</label>
+            <p-input-text v-model="form.container" class="ancho-total"></p-input-text></div>
+
+          <!-- Artículo de revista -->
+          <template v-if="form.type === 'article-journal'">
+            <div class="fila">
+              <div class="campo crece"><label>Volumen</label><p-input-text v-model="form.volume" class="ancho-total"></p-input-text></div>
+              <div class="campo crece"><label>Número</label><p-input-text v-model="form.issue" class="ancho-total"></p-input-text></div>
+              <div class="campo crece"><label>Páginas</label><p-input-text v-model="form.page" placeholder="207-217" class="ancho-total"></p-input-text></div>
+            </div>
+            <div class="campo"><label>ISSN <small class="silencio">(no va en APA, sí en BibTeX)</small></label><p-input-text v-model="form.issn" class="ancho-total"></p-input-text></div>
+          </template>
+
+          <!-- Libro -->
+          <template v-if="form.type === 'book'">
+            <div class="campo"><label>Editorial</label><p-input-text v-model="form.publisher" class="ancho-total"></p-input-text></div>
+            <div class="fila">
+              <div class="campo crece"><label>Edición (número)</label><p-input-text v-model="form.edition" placeholder="2" class="ancho-total"></p-input-text></div>
+              <div class="campo crece"><label>ISBN <small class="silencio">(no va en APA)</small></label><p-input-text v-model="form.isbn" class="ancho-total"></p-input-text></div>
+            </div>
+          </template>
+
+          <!-- Capítulo de libro -->
+          <template v-if="form.type === 'chapter'">
+            <div class="campo"><label>Editores del libro</label>
+              <p-input-text v-model="form.editors" placeholder="Apellido, Nombre; Apellido, Nombre" class="ancho-total"></p-input-text></div>
+            <div class="fila">
+              <div class="campo crece"><label>Páginas del capítulo</label><p-input-text v-model="form.page" placeholder="305-336" class="ancho-total"></p-input-text></div>
+              <div class="campo crece"><label>Editorial</label><p-input-text v-model="form.publisher" class="ancho-total"></p-input-text></div>
+            </div>
+            <div class="campo"><label>ISBN <small class="silencio">(no va en APA, sí en BibTeX)</small></label><p-input-text v-model="form.isbn" class="ancho-total"></p-input-text></div>
+          </template>
+
+          <!-- Tesis -->
+          <template v-if="form.type === 'thesis'">
+            <div class="campo"><label>Tipo de tesis</label><p-input-text v-model="form.genre" placeholder="Tesis doctoral / de maestría" class="ancho-total"></p-input-text></div>
+            <div class="campo"><label>Universidad</label><p-input-text v-model="form.publisher" class="ancho-total"></p-input-text></div>
+          </template>
+
+          <!-- Ponencia / congreso -->
+          <template v-if="form.type === 'paper-conference'">
+            <div class="campo"><label>Tipo de contribución</label><p-input-text v-model="form.genre" placeholder="Ponencia / Póster" class="ancho-total"></p-input-text></div>
+            <div class="campo"><label>Nombre del congreso</label><p-input-text v-model="form.eventTitle" class="ancho-total"></p-input-text></div>
+            <div class="campo"><label>Lugar</label><p-input-text v-model="form.eventPlace" placeholder="Ciudad, País" class="ancho-total"></p-input-text></div>
+          </template>
+
+          <!-- Informe -->
+          <template v-if="form.type === 'report'">
+            <div class="campo"><label>Número de informe</label><p-input-text v-model="form.number" class="ancho-total"></p-input-text></div>
+            <div class="campo"><label>Editorial / Organismo</label><p-input-text v-model="form.publisher" class="ancho-total"></p-input-text></div>
+          </template>
+
+          <!-- DOI y URL: APA usa la URL cuando NO hay DOI -->
+          <div class="fila">
+            <div class="campo crece"><label>DOI</label><p-input-text v-model="form.doi" placeholder="10.XXXX/XXXXXX" class="ancho-total"></p-input-text></div>
+            <div class="campo crece"><label>URL <small class="silencio">(si no hay DOI)</small></label><p-input-text v-model="form.url" placeholder="https://…" class="ancho-total"></p-input-text></div>
+          </div>
+          <div v-if="!editingId" class="campo"><label>Guardar en carpeta</label>
+            <p-select v-model="form.folderId" :options="folderSelectOptions" option-label="label" option-value="value" class="ancho-total"></p-select></div>
+        </div>
+      </div>
+      <template #footer>
+        <p-button label="Cancelar" text @click="cerrarPreview"></p-button>
+        <p-button :label="editingId ? 'Guardar cambios' : 'Guardar en biblioteca'" icon="pi pi-save" @click="savePreview"></p-button>
+      </template>
+    </p-dialog>
+
+    <!-- Diálogo: cita en el texto (APA 7) — guiado por menú -->
+    <p-dialog v-model:visible="showCitarTexto" modal header="Cómo citar en el texto (APA 7)" :style="{ width: '560px' }">
+      <!-- Menú: escoge el tipo de cita -->
+      <div class="campo">
+        <label>Tipo de cita</label>
+        <p-select v-model="tipoCita" :options="tiposCita" option-label="label" option-value="value" class="ancho-total"></p-select>
+      </div>
+      <p class="ayuda">{{ ayudasCita[tipoCita] }}</p>
+
+      <!-- Entrada para citas textuales -->
+      <div v-if="citaNecesitaTexto" class="entrada-cita">
+        <label class="mini-label">Fragmento citado (palabra por palabra)</label>
+        <textarea v-model="citaForm.textoCitado" rows="3" class="ta" placeholder="Pega aquí el texto literal…"></textarea>
+        <div class="fila mt-8">
+          <p-input-text v-model="citaForm.pagina" placeholder="Página, ej. 23" class="crece"></p-input-text>
+          <p-button label="Generar" icon="pi pi-bolt" @click="generarCita"></p-button>
+        </div>
+      </div>
+
+      <!-- Entrada para fuentes/obras (secundaria o varias obras) -->
+      <div v-else-if="citaNecesitaFuentes" class="entrada-cita">
+        <label class="mini-label">{{ tipoCita === 'secundaria' ? 'Fuente(s) original(es) citada(s)' : 'Obras a combinar' }}</label>
+        <div v-for="(f, i) in secFuentes" :key="i" class="fila" style="margin-bottom:8px">
+          <p-input-text v-model="f.autor" placeholder="Apellido del autor, ej. Smith" class="crece"></p-input-text>
+          <p-input-text v-model="f.anio" placeholder="Año" style="width:90px"></p-input-text>
+          <p-button v-if="secFuentes.length > 1" icon="pi pi-times" text severity="danger" @click="quitarFuente(i)" title="Quitar"></p-button>
+        </div>
+        <div class="fila" style="margin-bottom:0">
+          <p-button :label="tipoCita === 'secundaria' ? 'Añadir fuente' : 'Añadir obra'" icon="pi pi-plus" text size="small" @click="anadirFuente"></p-button>
+          <p-button label="Generar" icon="pi pi-bolt" size="small" @click="generarCita"></p-button>
+        </div>
+      </div>
+
+      <!-- Resultado -->
+      <div v-if="resultadoCita" class="cita-var" style="margin-top:16px">
+        <div class="cita-var-cab">
+          <span>{{ etiquetaResultado }}</span>
+          <button class="cita-copiar" @click="copiar(resultadoCita)" title="Copiar"><i class="pi pi-copy"></i></button>
+        </div>
+        <pre v-if="tipoCita === 'directa_larga'" class="cita-var-txt bloque-cita">{{ resultadoCita }}</pre>
+        <div v-else class="cita-var-txt">{{ resultadoCita }}</div>
+      </div>
+      <div v-if="resultadoCita2" class="cita-var">
+        <div class="cita-var-cab">
+          <span>Variante narrativa</span>
+          <button class="cita-copiar" @click="copiar(resultadoCita2)" title="Copiar"><i class="pi pi-copy"></i></button>
+        </div>
+        <div class="cita-var-txt">{{ resultadoCita2 }}</div>
+      </div>
+
+      <template #footer>
+        <p-button label="Cerrar" text @click="showCitarTexto = false"></p-button>
+      </template>
+    </p-dialog>
+
+    <!-- Diálogo: descargar referencias -->
+    <p-dialog v-model:visible="showExport" modal header="Descargar referencias" :style="{ width: '440px' }">
+      <div class="campo">
+        <label>Formato</label>
+        <p-select v-model="exportStyle" :options="estilosExport" option-label="label" option-value="value" class="ancho-total"></p-select>
+      </div>
+      <div class="campo">
+        <label>Qué exportar</label>
+        <p-select v-model="exportAlcance" :options="alcanceOpciones" option-label="label" option-value="value" class="ancho-total"></p-select>
+      </div>
+      <p class="ayuda"><i class="pi pi-sort-alpha-down" style="margin-right:5px"></i>Las referencias se ordenan alfabéticamente (A–Z) por autor.</p>
+      <template #footer>
+        <p-button label="Cancelar" text @click="showExport = false"></p-button>
+        <p-button label="Descargar" icon="pi pi-download" @click="descargarReferencias"
+          :disabled="exportAlcance === 'seleccionados' && !docsSeleccionados.length"></p-button>
+      </template>
+    </p-dialog>
+    </template>
+
+    <p-toast position="bottom-right"></p-toast>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

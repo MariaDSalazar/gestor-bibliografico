@@ -1,0 +1,17 @@
+# Backend FastAPI — Gestor Bibliográfico
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+httpx==0.28.1
+pypdf==5.1.0
+
+# Base de datos (SQLite en local / PostgreSQL en producción)
+sqlalchemy==2.0.36
+psycopg[binary]==3.2.3
+
+# Autenticación (login propio)
+bcrypt==4.2.1
+pyjwt==2.10.1
+
+# Motor de citas
+citeproc-py==0.6.0
+bibtexparser==1.4.1

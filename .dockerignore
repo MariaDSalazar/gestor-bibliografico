@@ -1,0 +1,16 @@
+# No copiar al contenedor lo que no hace falta.
+.git/
+.gitignore
+.claude/
+.codegraph/
+.idea/
+.vscode/
+**/__pycache__/
+*.py[cod]
+backend/.venv/
+node_modules/
+*.db
+*.db-wal
+*.db-shm
+CONTEXTO.md
+CLAUDE.md
