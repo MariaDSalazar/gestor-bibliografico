@@ -1,7 +1,6 @@
 # No copiar al contenedor lo que no hace falta.
 .git/
 .gitignore
-.claude/
 .codegraph/
 .idea/
 .vscode/
@@ -13,4 +12,3 @@ node_modules/
 *.db-wal
 *.db-shm
 CONTEXTO.md
-CLAUDE.md

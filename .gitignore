@@ -20,7 +20,4 @@ data/
 .idea/
 .vscode/
 
-# Claude Code y documentos de contexto (no versionar)
-.claude/
 CONTEXTO.md
-CLAUDE.md
