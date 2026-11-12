@@ -21,3 +21,9 @@ data/
 .vscode/
 
 CONTEXTO.md
+
+# Vercel
+.vercel
+
+.vercel
+.env*
