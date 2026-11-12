@@ -4,8 +4,6 @@
 .vscode
 CLAUDE.md
 CONTEXTO.md
-Dockerfile
-.dockerignore
 backend/.venv
 backend/tests
 **/__pycache__

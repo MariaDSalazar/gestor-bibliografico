@@ -1,19 +1,9 @@
----
-title: Gestor Bibliografico
-emoji: 📚
-colorFrom: green
-colorTo: blue
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # Gestor Bibliográfico
 
 Aplicación web tipo Mendeley: cada usuario importa documentos (DOI, enlace o PDF),
 la app extrae los metadatos y genera citas en APA 7, IEEE y BibTeX.
 
-🔗 **App en vivo:** https://MariaSalazar-gestor-bibliografico.hf.space
+🔗 **App en vivo:** https://gestor-bibliografico.vercel.app
 
 ## Tecnologías
 - **Backend:** FastAPI (Python) + SQLAlchemy — SQLite en local, PostgreSQL (Neon) en producción.
