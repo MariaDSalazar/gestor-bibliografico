@@ -3,10 +3,10 @@
 Aplicación web tipo Mendeley: cada usuario importa documentos (DOI, enlace o PDF),
 la app extrae los metadatos y genera citas en APA 7, IEEE y BibTeX.
 
-🔗 **App en vivo:** https://gestor-bibliografico.vercel.app
+**Aplicación en vivo:** https://gestor-bibliografico.vercel.app
 
 ## Tecnologías
-- **Backend:** FastAPI (Python) + SQLAlchemy — SQLite en local, PostgreSQL (Neon) en producción.
+- **Backend:** FastAPI (Python) + SQLAlchemy. SQLite en local, PostgreSQL (Neon) en producción.
 - **Extracción:** httpx (DOI/Crossref, Unpaywall) + pypdf.
 - **Citas:** formateador propio APA 7 (es-ES) · citeproc-py (IEEE) · BibTeX propio.
 - **Login:** propio (contraseña con bcrypt, sesión con JWT).
@@ -32,8 +32,8 @@ resources/  ieee.csl (estilo CSL de IEEE)
 
 ## Cómo funciona
 1. **Inicias sesión** (o te registras): cada usuario tiene su propia biblioteca en la base de datos.
-2. **Importas** un documento por DOI, enlace o PDF → se extraen los metadatos a CSL-JSON;
-   si el documento es de acceso abierto, también se descarga su PDF.
+2. **Importas** un documento por DOI, enlace o PDF: se extraen los metadatos a CSL-JSON.
+   Si el documento es de acceso abierto, también se descarga su PDF.
 3. **Revisas y guardas**: el formulario muestra los campos según el tipo (libro, artículo,
    tesis, capítulo, web, ponencia, informe). El PDF queda guardado en la base de datos.
 4. **Organizas** en carpetas y **editas** cuando quieras (con el PDF a la vista).
